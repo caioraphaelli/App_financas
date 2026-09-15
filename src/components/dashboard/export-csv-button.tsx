@@ -21,6 +21,7 @@ export function ExportCsvButton({ transactions }: { transactions: TransactionWit
       "Descrição",
       "Categoria",
       "Subcategoria",
+      "Forma de pagamento",
       "Valor",
       "Parcela",
     ];
@@ -30,6 +31,7 @@ export function ExportCsvButton({ transactions }: { transactions: TransactionWit
       t.description,
       t.category?.name ?? "",
       t.subcategory?.name ?? "",
+      t.payment_method?.name ?? "",
       Number(t.amount).toFixed(2).replace(".", ","),
       t.installment_number && t.installments_total
         ? `${t.installment_number}/${t.installments_total}`

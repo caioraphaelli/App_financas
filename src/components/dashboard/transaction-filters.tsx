@@ -6,14 +6,16 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MONTH_NAMES } from "@/lib/format";
-import type { Category } from "@/lib/types/database";
+import type { Category, PaymentMethod } from "@/lib/types/database";
 
 export function TransactionFilters({
   categories,
+  paymentMethods,
   month,
   year,
 }: {
   categories: Category[];
+  paymentMethods: PaymentMethod[];
   month: number;
   year: number;
 }) {
@@ -85,6 +87,22 @@ export function TransactionFilters({
           {categories.map((c) => (
             <SelectItem key={c.id} value={c.id}>
               {c.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        defaultValue={searchParams.get("payment_method") ?? "all"}
+        onValueChange={(v) => updateParams({ payment_method: v })}
+      >
+        <SelectTrigger className="w-[170px]">
+          <SelectValue placeholder="Forma de pagamento" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todas as formas</SelectItem>
+          {paymentMethods.map((pm) => (
+            <SelectItem key={pm.id} value={pm.id}>
+              {pm.name}
             </SelectItem>
           ))}
         </SelectContent>

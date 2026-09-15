@@ -43,3 +43,26 @@ export function addMonths(dateStr: string, months: number): string {
   const d = new Date(year, month - 1 + months, day);
   return toDateInputValue(d);
 }
+
+/**
+ * Calcula a data de vencimento da fatura em que uma compra no cartão cai,
+ * a partir do dia de fechamento e do dia de vencimento cadastrados no
+ * cartão. Compras até o dia de fechamento entram na fatura que fecha
+ * naquele mês; depois disso, caem na fatura do mês seguinte. O vencimento
+ * fica no mesmo mês do fechamento (se o dia de vencimento for maior que o
+ * de fechamento) ou no mês seguinte (caso contrário).
+ */
+export function computeCardDueDate(purchaseDateStr: string, closingDay: number, dueDay: number): string {
+  const [year, month, day] = purchaseDateStr.split("-").map(Number);
+  let closingMonthIndex = month - 1;
+  if (day > closingDay) {
+    closingMonthIndex += 1;
+  }
+  let dueMonthIndex = closingMonthIndex;
+  if (dueDay <= closingDay) {
+    dueMonthIndex += 1;
+  }
+  const daysInDueMonth = new Date(year, dueMonthIndex + 1, 0).getDate();
+  const cappedDueDay = Math.min(dueDay, daysInDueMonth);
+  return toDateInputValue(new Date(year, dueMonthIndex, cappedDueDay));
+}

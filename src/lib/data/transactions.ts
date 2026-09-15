@@ -2,7 +2,9 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type {
   Category,
+  PaymentMethod,
   Purchase,
+  RecurringSeries,
   Subcategory,
   Transaction,
   TransactionType,
@@ -13,35 +15,77 @@ export interface TransactionFilters {
   month?: number;
   year?: number;
   categoryId?: string;
+  paymentMethodId?: string;
   type?: TransactionType;
   search?: string;
 }
 
 export async function getCategories(): Promise<Category[]> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [{ data, error }, { data: hidden }] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("*")
+      .order("type", { ascending: true })
+      .order("sort_order", { ascending: true }),
+    user
+      ? supabase.from("hidden_categories").select("category_id").eq("user_id", user.id)
+      : Promise.resolve({ data: [] as { category_id: string }[] }),
+  ]);
+
+  if (error) throw error;
+  const hiddenIds = new Set((hidden ?? []).map((h) => h.category_id));
+  return (data ?? []).filter((c) => !hiddenIds.has(c.id));
+}
+
+export async function getSubcategoriesByCategory(): Promise<Record<string, Subcategory[]>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [{ data, error }, { data: hidden }] = await Promise.all([
+    supabase.from("subcategories").select("*").order("sort_order", { ascending: true }),
+    user
+      ? supabase.from("hidden_subcategories").select("subcategory_id").eq("user_id", user.id)
+      : Promise.resolve({ data: [] as { subcategory_id: string }[] }),
+  ]);
+
+  if (error) throw error;
+  const hiddenIds = new Set((hidden ?? []).map((h) => h.subcategory_id));
+  const map: Record<string, Subcategory[]> = {};
+  for (const sub of data ?? []) {
+    if (hiddenIds.has(sub.id)) continue;
+    (map[sub.category_id] ??= []).push(sub);
+  }
+  return map;
+}
+
+export async function getPaymentMethods(): Promise<PaymentMethod[]> {
+  const supabase = await createClient();
   const { data, error } = await supabase
-    .from("categories")
+    .from("payment_methods")
     .select("*")
-    .order("type", { ascending: true })
-    .order("sort_order", { ascending: true });
+    .order("kind", { ascending: true })
+    .order("created_at", { ascending: true });
 
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getSubcategoriesByCategory(): Promise<Record<string, Subcategory[]>> {
+export async function getRecurringSeries(): Promise<RecurringSeries[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("subcategories")
+    .from("recurring_series")
     .select("*")
-    .order("sort_order", { ascending: true });
+    .order("created_at", { ascending: false });
 
   if (error) throw error;
-  const map: Record<string, Subcategory[]> = {};
-  for (const sub of data ?? []) {
-    (map[sub.category_id] ??= []).push(sub);
-  }
-  return map;
+  return data ?? [];
 }
 
 export async function getTransactions(
@@ -50,7 +94,7 @@ export async function getTransactions(
   const supabase = await createClient();
   let query = supabase
     .from("transactions")
-    .select("*, category:categories(*), subcategory:subcategories(*)")
+    .select("*, category:categories(*), subcategory:subcategories(*), payment_method:payment_methods(*)")
     .order("date", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -63,6 +107,9 @@ export async function getTransactions(
   }
   if (filters.categoryId) {
     query = query.eq("category_id", filters.categoryId);
+  }
+  if (filters.paymentMethodId) {
+    query = query.eq("payment_method_id", filters.paymentMethodId);
   }
   if (filters.type) {
     query = query.eq("type", filters.type);
@@ -154,7 +201,10 @@ export async function getPurchasesWithProgress(
 
   return purchases.map((purchase) => {
     const items = installments.filter((t) => t.purchase_id === purchase.id);
-    const paidCount = items.filter((t) => t.date < todayStr).length;
+    // Parcelas anteriores à "starting_installment" já eram pagas antes de o
+    // usuário registrar a compra no app, então contam como pagas também.
+    const paidBeforeStart = purchase.starting_installment - 1;
+    const paidCount = paidBeforeStart + items.filter((t) => t.date < todayStr).length;
     const pendingItems = items.filter((t) => t.date >= todayStr);
     const nextInstallment = pendingItems[0] ?? null;
     return {
@@ -168,7 +218,15 @@ export async function getPurchasesWithProgress(
   });
 }
 
-export async function getUpcomingCommitments(monthsAhead = 6) {
+export interface MonthlyCashFlow {
+  month: string;
+  parcelamentos: number;
+  outrasDespesas: number;
+  receitas: number;
+  saldo: number;
+}
+
+export async function getMonthlyCashFlowProjection(monthsAhead = 6): Promise<MonthlyCashFlow[]> {
   const supabase = await createClient();
   const today = new Date();
   const start = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -177,24 +235,39 @@ export async function getUpcomingCommitments(monthsAhead = 6) {
 
   const { data, error } = await supabase
     .from("transactions")
-    .select("date, amount")
-    .not("purchase_id", "is", null)
+    .select("date, amount, type, purchase_id")
     .gte("date", start)
     .lt("date", end);
 
   if (error) throw error;
 
-  const byMonth = new Map<string, number>();
-  for (const t of (data ?? []) as { date: string; amount: number }[]) {
+  const byMonth = new Map<string, { parcelamentos: number; outrasDespesas: number; receitas: number }>();
+  for (const t of (data ?? []) as { date: string; amount: number; type: TransactionType; purchase_id: string | null }[]) {
     const key = t.date.slice(0, 7);
-    byMonth.set(key, (byMonth.get(key) ?? 0) + Number(t.amount));
+    const bucket = byMonth.get(key) ?? { parcelamentos: 0, outrasDespesas: 0, receitas: 0 };
+    const amount = Number(t.amount);
+    if (t.type === "receita") {
+      bucket.receitas += amount;
+    } else if (t.purchase_id) {
+      bucket.parcelamentos += amount;
+    } else {
+      bucket.outrasDespesas += amount;
+    }
+    byMonth.set(key, bucket);
   }
 
-  const result: { month: string; total: number }[] = [];
+  const result: MonthlyCashFlow[] = [];
   for (let i = 0; i < monthsAhead; i++) {
     const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    result.push({ month: key, total: byMonth.get(key) ?? 0 });
+    const bucket = byMonth.get(key) ?? { parcelamentos: 0, outrasDespesas: 0, receitas: 0 };
+    result.push({
+      month: key,
+      parcelamentos: bucket.parcelamentos,
+      outrasDespesas: bucket.outrasDespesas,
+      receitas: bucket.receitas,
+      saldo: bucket.receitas - bucket.parcelamentos - bucket.outrasDespesas,
+    });
   }
   return result;
 }

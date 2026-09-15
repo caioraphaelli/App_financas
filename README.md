@@ -29,6 +29,9 @@ Recharts.
 4. Abra o **SQL Editor** do projeto e rode, nesta ordem:
    - o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) — cria as
      tabelas, índices e políticas de Row Level Security;
+   - cada arquivo em [`supabase/migrations/`](supabase/migrations), em ordem
+     numérica (0002, 0003, ...) — adicionam formas de pagamento/cartões,
+     categorias editáveis pelo usuário, lançamentos recorrentes, etc.;
    - o conteúdo de [`supabase/seed.sql`](supabase/seed.sql) — popula as
      categorias e subcategorias padrão (Alimentação, Transporte, Moradia,
      Lazer, Saúde, Educação, Salário, Freelance, Outros...).

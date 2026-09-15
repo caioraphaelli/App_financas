@@ -7,6 +7,7 @@ import { createTransaction, updateTransaction } from "@/lib/actions/transactions
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +25,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Category, ExpenseKind, Subcategory, TransactionWithRelations } from "@/lib/types/database";
-import { toDateInputValue } from "@/lib/format";
+import type {
+  Category,
+  ExpenseKind,
+  PaymentMethod,
+  RecurringPeriodType,
+  Subcategory,
+  TransactionWithRelations,
+} from "@/lib/types/database";
+import { computeCardDueDate, formatDate, toDateInputValue } from "@/lib/format";
 
 const EXPENSE_KIND_LABELS: Record<ExpenseKind, string> = {
   variavel: "Variável",
@@ -37,18 +45,25 @@ const EXPENSE_KIND_LABELS: Record<ExpenseKind, string> = {
 export function TransactionFormDialog({
   categories,
   subcategoriesByCategory,
+  paymentMethods,
   transaction,
   trigger,
 }: {
   categories: Category[];
   subcategoriesByCategory: Record<string, Subcategory[]>;
+  paymentMethods: PaymentMethod[];
   transaction?: TransactionWithRelations;
   trigger?: React.ReactNode;
 }) {
   const isEdit = Boolean(transaction);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<"receita" | "despesa">(transaction?.type ?? "despesa");
+  const [expenseKind, setExpenseKind] = useState<ExpenseKind>(transaction?.expense_kind ?? "variavel");
   const [categoryId, setCategoryId] = useState(transaction?.category_id ?? "");
+  const [paymentMethodId, setPaymentMethodId] = useState(transaction?.payment_method_id ?? "");
+  const [dateValue, setDateValue] = useState(transaction?.date ?? toDateInputValue(new Date()));
+  const [recorrente, setRecorrente] = useState(false);
+  const [periodType, setPeriodType] = useState<RecurringPeriodType | "unico">("unico");
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
 
@@ -59,6 +74,26 @@ export function TransactionFormDialog({
     [categories, type]
   );
   const subcategories = categoryId ? subcategoriesByCategory[categoryId] ?? [] : [];
+
+  const showRecurrence = !isEdit && (type === "despesa" ? expenseKind === "fixa" : recorrente);
+
+  const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === paymentMethodId);
+  const isCard = type === "despesa" && selectedPaymentMethod?.kind === "cartao";
+  const cardCycleReady = isCard && Boolean(selectedPaymentMethod?.closing_day && selectedPaymentMethod?.due_day);
+  const previewDueDate =
+    cardCycleReady && dateValue
+      ? computeCardDueDate(dateValue, selectedPaymentMethod!.closing_day!, selectedPaymentMethod!.due_day!)
+      : null;
+
+  function resetState() {
+    setType(transaction?.type ?? "despesa");
+    setExpenseKind(transaction?.expense_kind ?? "variavel");
+    setCategoryId(transaction?.category_id ?? "");
+    setPaymentMethodId(transaction?.payment_method_id ?? "");
+    setDateValue(transaction?.date ?? toDateInputValue(new Date()));
+    setRecorrente(false);
+    setPeriodType("unico");
+  }
 
   function handleSubmit(formData: FormData) {
     startTransition(async () => {
@@ -79,10 +114,7 @@ export function TransactionFormDialog({
       onOpenChange={(next) => {
         setOpen(next);
         setError(undefined);
-        if (next) {
-          setType(transaction?.type ?? "despesa");
-          setCategoryId(transaction?.category_id ?? "");
-        }
+        if (next) resetState();
       }}
     >
       <DialogTrigger asChild>
@@ -114,6 +146,8 @@ export function TransactionFormDialog({
                 onValueChange={(v) => {
                   setType(v as "receita" | "despesa");
                   setCategoryId("");
+                  setRecorrente(false);
+                  setPeriodType("unico");
                 }}
                 disabled={isEdit}
               >
@@ -131,7 +165,15 @@ export function TransactionFormDialog({
             {type === "despesa" && (
               <div className="grid gap-2">
                 <Label>Natureza</Label>
-                <Select name="expense_kind" defaultValue={transaction?.expense_kind ?? "variavel"} disabled={isEdit}>
+                <Select
+                  name="expense_kind"
+                  value={expenseKind}
+                  onValueChange={(v) => {
+                    setExpenseKind(v as ExpenseKind);
+                    if (v !== "fixa") setPeriodType("unico");
+                  }}
+                  disabled={isEdit}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -144,6 +186,61 @@ export function TransactionFormDialog({
             )}
           </div>
 
+          {!isEdit && type === "receita" && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={recorrente}
+                onCheckedChange={(checked) => {
+                  setRecorrente(checked === true);
+                  if (!checked) setPeriodType("unico");
+                  else setPeriodType("meses");
+                }}
+              />
+              Receita fixa (se repete todo mês)
+            </label>
+          )}
+
+          {showRecurrence && (
+            <div className="grid gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="grid gap-2">
+                <Label>Repetição</Label>
+                <Select
+                  value={periodType}
+                  onValueChange={(v) => setPeriodType(v as RecurringPeriodType | "unico")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unico">Somente este mês</SelectItem>
+                    <SelectItem value="meses">Por um número de meses</SelectItem>
+                    <SelectItem value="indeterminado">Por tempo indeterminado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {periodType !== "unico" && <input type="hidden" name="period_type" value={periodType} />}
+              {periodType === "meses" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="months_count">Quantos meses?</Label>
+                  <Input
+                    id="months_count"
+                    name="months_count"
+                    type="number"
+                    min={1}
+                    max={360}
+                    defaultValue={12}
+                    required
+                  />
+                </div>
+              )}
+              {periodType === "indeterminado" && (
+                <p className="text-xs text-muted-foreground">
+                  Serão lançadas as próximas 36 parcelas mensais a partir da data escolhida.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid gap-2">
             <Label htmlFor="description">Descrição</Label>
             <Input
@@ -154,6 +251,30 @@ export function TransactionFormDialog({
               placeholder="Ex: Supermercado do mês"
             />
           </div>
+
+          {type === "despesa" && (
+            <div className="grid gap-2">
+              <Label>Forma de pagamento</Label>
+              <Select name="payment_method_id" value={paymentMethodId} onValueChange={setPaymentMethodId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Opcional" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentMethods.map((pm) => (
+                    <SelectItem key={pm.id} value={pm.id}>
+                      {pm.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isCard && !cardCycleReady && (
+                <p className="text-xs text-muted-foreground">
+                  Cadastre o dia de fechamento e vencimento deste cartão em Cadastros para o vencimento
+                  ser calculado automaticamente.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
@@ -169,14 +290,22 @@ export function TransactionFormDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="date">Data</Label>
+              <Label htmlFor="date">
+                {cardCycleReady ? "Data da compra" : showRecurrence ? "1º lançamento em" : "Data"}
+              </Label>
               <Input
                 id="date"
                 name="date"
                 type="date"
                 required
-                defaultValue={transaction?.date ?? toDateInputValue(new Date())}
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
               />
+              {previewDueDate && (
+                <p className="text-xs text-muted-foreground">
+                  Vencimento da fatura: <span className="font-medium">{formatDate(previewDueDate)}</span>
+                </p>
+              )}
             </div>
           </div>
 

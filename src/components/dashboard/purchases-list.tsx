@@ -1,14 +1,27 @@
 "use client";
 
-import { CreditCard, Landmark } from "lucide-react";
+import { CreditCard, Landmark, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DeleteButton } from "@/components/dashboard/delete-button";
+import { PurchaseFormDialog } from "@/components/dashboard/purchase-form-dialog";
 import { deletePurchase } from "@/lib/actions/transactions";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { PurchaseWithProgress } from "@/lib/data/transactions";
+import type { Category, PaymentMethod, Subcategory } from "@/lib/types/database";
 
-export function PurchasesList({ items }: { items: PurchaseWithProgress[] }) {
+export function PurchasesList({
+  items,
+  categories,
+  subcategoriesByCategory,
+  paymentMethods,
+}: {
+  items: PurchaseWithProgress[];
+  categories: Category[];
+  subcategoriesByCategory: Record<string, Subcategory[]>;
+  paymentMethods: PaymentMethod[];
+}) {
   if (items.length === 0) {
     return (
       <div className="flex h-40 items-center justify-center rounded-md border border-dashed text-sm text-muted-foreground">
@@ -39,11 +52,24 @@ export function PurchasesList({ items }: { items: PurchaseWithProgress[] }) {
                     </span>
                   )}
                 </div>
-                <DeleteButton
-                  title="Excluir compra parcelada"
-                  description={`Isso excluirá "${purchase.description}" e todas as ${total} parcelas geradas. Essa ação não pode ser desfeita.`}
-                  onDelete={() => deletePurchase(purchase.id)}
-                />
+                <div className="flex shrink-0 gap-1">
+                  <PurchaseFormDialog
+                    categories={categories}
+                    subcategoriesByCategory={subcategoriesByCategory}
+                    paymentMethods={paymentMethods}
+                    purchase={purchase}
+                    trigger={
+                      <Button variant="ghost" size="icon">
+                        <Pencil className="size-4" />
+                      </Button>
+                    }
+                  />
+                  <DeleteButton
+                    title="Excluir compra parcelada"
+                    description={`Isso excluirá "${purchase.description}" e todas as ${total} parcelas geradas. Essa ação não pode ser desfeita.`}
+                    onDelete={() => deletePurchase(purchase.id)}
+                  />
+                </div>
               </div>
 
               <div className="flex items-center gap-2 text-xs">

@@ -3,7 +3,12 @@ import { TransactionFilters } from "@/components/dashboard/transaction-filters";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { TransactionFormDialog } from "@/components/dashboard/transaction-form-dialog";
 import { ExportCsvButton } from "@/components/dashboard/export-csv-button";
-import { getCategories, getSubcategoriesByCategory, getTransactions } from "@/lib/data/transactions";
+import {
+  getCategories,
+  getPaymentMethods,
+  getSubcategoriesByCategory,
+  getTransactions,
+} from "@/lib/data/transactions";
 import type { TransactionType } from "@/lib/types/database";
 
 export const metadata: Metadata = { title: "Transações — Finanças+" };
@@ -16,6 +21,7 @@ export default async function TransacoesPage({
     year?: string;
     type?: string;
     category?: string;
+    payment_method?: string;
     search?: string;
   }>;
 }) {
@@ -25,12 +31,14 @@ export default async function TransacoesPage({
   const year = Number(params.year) || now.getFullYear();
   const type = (params.type as TransactionType | undefined) || undefined;
   const categoryId = params.category || undefined;
+  const paymentMethodId = params.payment_method || undefined;
   const search = params.search || undefined;
 
-  const [categories, subcategoriesByCategory, transactions] = await Promise.all([
+  const [categories, subcategoriesByCategory, paymentMethods, transactions] = await Promise.all([
     getCategories(),
     getSubcategoriesByCategory(),
-    getTransactions({ month, year, type, categoryId, search }),
+    getPaymentMethods(),
+    getTransactions({ month, year, type, categoryId, paymentMethodId, search }),
   ]);
 
   return (
@@ -48,16 +56,23 @@ export default async function TransacoesPage({
           <TransactionFormDialog
             categories={categories}
             subcategoriesByCategory={subcategoriesByCategory}
+            paymentMethods={paymentMethods}
           />
         </div>
       </div>
 
-      <TransactionFilters categories={categories} month={month} year={year} />
+      <TransactionFilters
+        categories={categories}
+        paymentMethods={paymentMethods}
+        month={month}
+        year={year}
+      />
 
       <TransactionsTable
         transactions={transactions}
         categories={categories}
         subcategoriesByCategory={subcategoriesByCategory}
+        paymentMethods={paymentMethods}
       />
     </div>
   );
