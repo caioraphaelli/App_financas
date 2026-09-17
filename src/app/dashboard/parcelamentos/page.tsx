@@ -1,21 +1,25 @@
 import type { Metadata } from "next";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PurchaseFormDialog } from "@/components/dashboard/purchase-form-dialog";
 import { PurchasesList } from "@/components/dashboard/purchases-list";
+import { InstallmentsSummaryTable } from "@/components/dashboard/installments-summary-table";
 import {
   getCategories,
   getPaymentMethods,
   getSubcategoriesByCategory,
   getPurchasesWithProgress,
+  getMonthlyInstallmentsSummary,
 } from "@/lib/data/transactions";
 
 export const metadata: Metadata = { title: "Parcelamentos — Finanças+" };
 
 export default async function ParcelamentosPage() {
-  const [categories, subcategoriesByCategory, paymentMethods, purchases] = await Promise.all([
+  const [categories, subcategoriesByCategory, paymentMethods, purchases, monthlySummary] = await Promise.all([
     getCategories(),
     getSubcategoriesByCategory(),
     getPaymentMethods(),
     getPurchasesWithProgress(),
+    getMonthlyInstallmentsSummary(6),
   ]);
 
   return (
@@ -33,6 +37,19 @@ export default async function ParcelamentosPage() {
           paymentMethods={paymentMethods}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Parcelamentos por mês</CardTitle>
+          <CardDescription>
+            Total de parcelas a vencer em cada mês, comparado com a receita e as outras despesas já
+            programadas para o período.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <InstallmentsSummaryTable data={monthlySummary} />
+        </CardContent>
+      </Card>
 
       <PurchasesList
         items={purchases}

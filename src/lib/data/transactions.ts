@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { MONTH_NAMES } from "@/lib/format";
 import type {
   Category,
   PaymentMethod,
@@ -218,15 +219,18 @@ export async function getPurchasesWithProgress(
   });
 }
 
-export interface MonthlyCashFlow {
+export interface MonthlyInstallmentsSummary {
   month: string;
+  label: string;
   parcelamentos: number;
-  outrasDespesas: number;
   receitas: number;
+  outrasDespesas: number;
   saldo: number;
 }
 
-export async function getMonthlyCashFlowProjection(monthsAhead = 6): Promise<MonthlyCashFlow[]> {
+export async function getMonthlyInstallmentsSummary(
+  monthsAhead = 6
+): Promise<MonthlyInstallmentsSummary[]> {
   const supabase = await createClient();
   const today = new Date();
   const start = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -241,10 +245,10 @@ export async function getMonthlyCashFlowProjection(monthsAhead = 6): Promise<Mon
 
   if (error) throw error;
 
-  const byMonth = new Map<string, { parcelamentos: number; outrasDespesas: number; receitas: number }>();
+  const byMonth = new Map<string, { parcelamentos: number; receitas: number; outrasDespesas: number }>();
   for (const t of (data ?? []) as { date: string; amount: number; type: TransactionType; purchase_id: string | null }[]) {
     const key = t.date.slice(0, 7);
-    const bucket = byMonth.get(key) ?? { parcelamentos: 0, outrasDespesas: 0, receitas: 0 };
+    const bucket = byMonth.get(key) ?? { parcelamentos: 0, receitas: 0, outrasDespesas: 0 };
     const amount = Number(t.amount);
     if (t.type === "receita") {
       bucket.receitas += amount;
@@ -256,18 +260,20 @@ export async function getMonthlyCashFlowProjection(monthsAhead = 6): Promise<Mon
     byMonth.set(key, bucket);
   }
 
-  const result: MonthlyCashFlow[] = [];
+  const result: MonthlyInstallmentsSummary[] = [];
   for (let i = 0; i < monthsAhead; i++) {
     const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const bucket = byMonth.get(key) ?? { parcelamentos: 0, outrasDespesas: 0, receitas: 0 };
+    const bucket = byMonth.get(key) ?? { parcelamentos: 0, receitas: 0, outrasDespesas: 0 };
     result.push({
       month: key,
+      label: `${MONTH_NAMES[d.getMonth()].slice(0, 3)}/${String(d.getFullYear()).slice(2)}`,
       parcelamentos: bucket.parcelamentos,
-      outrasDespesas: bucket.outrasDespesas,
       receitas: bucket.receitas,
+      outrasDespesas: bucket.outrasDespesas,
       saldo: bucket.receitas - bucket.parcelamentos - bucket.outrasDespesas,
     });
   }
   return result;
 }
+

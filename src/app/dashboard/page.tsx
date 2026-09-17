@@ -1,14 +1,16 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PeriodFilter } from "@/components/dashboard/period-filter";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
 import { CategoryPieChart } from "@/components/dashboard/category-pie-chart";
-import { CashFlowChart } from "@/components/dashboard/cash-flow-chart";
-import { getMonthlyCashFlowProjection, getTransactions, summarize } from "@/lib/data/transactions";
+import { DreTable } from "@/components/dashboard/dre-table";
+import { DreFilter } from "@/components/dashboard/dre-filter";
+import { getTransactions, summarize } from "@/lib/data/transactions";
+import { getDreComparison } from "@/lib/data/dre";
 import { formatCurrency, formatDate, monthLabel } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Dashboard — Finanças+" };
@@ -16,16 +18,17 @@ export const metadata: Metadata = { title: "Dashboard — Finanças+" };
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; year?: string }>;
+  searchParams: Promise<{ month?: string; year?: string; dreMonths?: string }>;
 }) {
   const params = await searchParams;
   const now = new Date();
   const month = Number(params.month) || now.getMonth() + 1;
   const year = Number(params.year) || now.getFullYear();
+  const dreMonths = Number(params.dreMonths) || 6;
 
-  const [transactions, cashFlow] = await Promise.all([
+  const [transactions, dre] = await Promise.all([
     getTransactions({ month, year }),
-    getMonthlyCashFlowProjection(6),
+    getDreComparison(month, year, dreMonths),
   ]);
   const summary = summarize(transactions);
   const recent = transactions.slice(0, 6);
@@ -104,18 +107,19 @@ export default async function DashboardPage({
           </div>
         </TabsContent>
 
-        <TabsContent value="fluxo" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Fluxo de caixa projetado (6 meses)</CardTitle>
-              <CardDescription>
-                Parcelamentos, outras despesas já programadas, receitas previstas e o saldo de cada mês.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <CashFlowChart data={cashFlow} />
-            </CardContent>
-          </Card>
+        <TabsContent value="fluxo" className="mt-4 grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">DFC mensal</h2>
+              <p className="text-sm text-muted-foreground">
+                Começa em {monthLabel(month, year)} (mês do filtro acima) e segue para os meses
+                seguintes. Clique em uma conta para abrir o detalhamento por categoria. O percentual
+                ao lado de cada valor é a análise vertical (% em relação à receita do mês).
+              </p>
+            </div>
+            <DreFilter monthsCount={dreMonths} />
+          </div>
+          <DreTable data={dre} />
         </TabsContent>
       </Tabs>
     </div>
