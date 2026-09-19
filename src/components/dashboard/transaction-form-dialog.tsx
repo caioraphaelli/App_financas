@@ -238,6 +238,16 @@ export function TransactionFormDialog({
                   Serão lançadas as próximas 36 parcelas mensais a partir da data escolhida.
                 </p>
               )}
+              {type === "despesa" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="data_fim_contrato">Fim do contrato (opcional)</Label>
+                  <Input id="data_fim_contrato" name="data_fim_contrato" type="date" />
+                  <p className="text-xs text-muted-foreground">
+                    Preencha se essa despesa tem fidelidade com prazo definido (ex: plano de celular
+                    de 12 meses). Deixe em branco se for indefinida (ex: aluguel).
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

@@ -15,6 +15,7 @@ import { TransactionFormDialog } from "@/components/dashboard/transaction-form-d
 import { DeleteButton } from "@/components/dashboard/delete-button";
 import { deleteRecurringSeries, deleteTransaction } from "@/lib/actions/transactions";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { classificarPrazo, PRAZO_LABELS } from "@/lib/prazo";
 import type { Category, PaymentMethod, Subcategory, TransactionWithRelations } from "@/lib/types/database";
 
 export function TransactionsTable({
@@ -22,11 +23,13 @@ export function TransactionsTable({
   categories,
   subcategoriesByCategory,
   paymentMethods,
+  limiteCurtoPrazoMeses,
 }: {
   transactions: TransactionWithRelations[];
   categories: Category[];
   subcategoriesByCategory: Record<string, Subcategory[]>;
   paymentMethods: PaymentMethod[];
+  limiteCurtoPrazoMeses: number;
 }) {
   if (transactions.length === 0) {
     return (
@@ -55,8 +58,18 @@ export function TransactionsTable({
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="font-medium">{t.description}</span>
                   {t.installment_number && t.installments_total && (
-                    <Badge variant="secondary" className="w-fit text-xs">
-                      Parcela {t.installment_number}/{t.installments_total}
+                    <>
+                      <Badge variant="secondary" className="w-fit text-xs">
+                        Parcela {t.installment_number}/{t.installments_total}
+                      </Badge>
+                      <Badge variant="outline" className="w-fit text-xs">
+                        {PRAZO_LABELS[classificarPrazo(t.installments_total - t.installment_number, limiteCurtoPrazoMeses)]}
+                      </Badge>
+                    </>
+                  )}
+                  {t.expense_kind === "fixa" && (
+                    <Badge variant="outline" className="w-fit text-xs">
+                      Despesa Fixa
                     </Badge>
                   )}
                   {t.recurring_series_id && (

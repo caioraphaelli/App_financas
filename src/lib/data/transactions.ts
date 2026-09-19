@@ -10,6 +10,7 @@ import type {
   Transaction,
   TransactionType,
   TransactionWithRelations,
+  UserSettings,
 } from "@/lib/types/database";
 
 export interface TransactionFilters {
@@ -76,6 +77,31 @@ export async function getPaymentMethods(): Promise<PaymentMethod[]> {
 
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getUserSettings(): Promise<UserSettings> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { user_id: "", limite_curto_prazo_meses: 3, limite_longo_prazo_meses: 10, created_at: "", updated_at: "" };
+
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("*")
+    .eq("user_id", user.id)
+    .single();
+
+  if (error || !data) {
+    return {
+      user_id: user.id,
+      limite_curto_prazo_meses: 3,
+      limite_longo_prazo_meses: 10,
+      created_at: "",
+      updated_at: "",
+    };
+  }
+  return data;
 }
 
 export async function getRecurringSeries(): Promise<RecurringSeries[]> {

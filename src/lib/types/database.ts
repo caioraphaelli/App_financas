@@ -3,6 +3,8 @@ export type ExpenseKind = "variavel" | "fixa" | "parcelada_cartao" | "parcelada_
 export type PurchasePaymentType = "cartao" | "boleto";
 export type PaymentMethodKind = "dinheiro" | "pix" | "boleto" | "cartao" | "outro";
 export type RecurringPeriodType = "meses" | "indeterminado";
+export type ForecastStatus = "pendente" | "convertida" | "nao_realizada";
+export type PrazoClassificacao = "curto" | "longo";
 
 export interface Category {
   id: string;
@@ -66,7 +68,41 @@ export interface RecurringSeries {
   start_date: string;
   period_type: RecurringPeriodType;
   months_count: number | null;
+  data_fim_contrato: string | null;
   created_at: string;
+}
+
+export interface Forecast {
+  id: string;
+  user_id: string;
+  group_id: string | null;
+  type: TransactionType;
+  description: string;
+  amount: number;
+  category_id: string | null;
+  subcategory_id: string | null;
+  payment_method_id: string | null;
+  data_prevista: string;
+  meses_repeticao: number | null;
+  status: ForecastStatus;
+  transaction_id: string | null;
+  purchase_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForecastWithRelations extends Forecast {
+  category: Category | null;
+  subcategory: Subcategory | null;
+  payment_method: PaymentMethod | null;
+}
+
+export interface UserSettings {
+  user_id: string;
+  limite_curto_prazo_meses: number;
+  limite_longo_prazo_meses: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Transaction {

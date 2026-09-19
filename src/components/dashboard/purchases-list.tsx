@@ -8,6 +8,7 @@ import { DeleteButton } from "@/components/dashboard/delete-button";
 import { PurchaseFormDialog } from "@/components/dashboard/purchase-form-dialog";
 import { deletePurchase } from "@/lib/actions/transactions";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { classificarPrazo, PRAZO_LABELS } from "@/lib/prazo";
 import type { PurchaseWithProgress } from "@/lib/data/transactions";
 import type { Category, PaymentMethod, Subcategory } from "@/lib/types/database";
 
@@ -16,11 +17,13 @@ export function PurchasesList({
   categories,
   subcategoriesByCategory,
   paymentMethods,
+  limiteCurtoPrazoMeses,
 }: {
   items: PurchaseWithProgress[];
   categories: Category[];
   subcategoriesByCategory: Record<string, Subcategory[]>;
   paymentMethods: PaymentMethod[];
+  limiteCurtoPrazoMeses: number;
 }) {
   if (items.length === 0) {
     return (
@@ -72,7 +75,7 @@ export function PurchasesList({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge variant="outline" className="gap-1">
                   {purchase.payment_method === "cartao" ? (
                     <CreditCard className="size-3" />
@@ -82,6 +85,11 @@ export function PurchasesList({
                   {purchase.payment_method === "cartao" ? "Cartão" : "Boleto"}
                 </Badge>
                 <Badge variant="secondary">{formatCurrency(installmentValue)} / parcela</Badge>
+                <Badge variant={pendingCount > 0 ? "default" : "outline"}>
+                  {pendingCount > 0
+                    ? PRAZO_LABELS[classificarPrazo(pendingCount, limiteCurtoPrazoMeses)]
+                    : "Quitada"}
+                </Badge>
               </div>
 
               <div className="grid gap-1">

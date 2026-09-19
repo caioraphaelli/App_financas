@@ -64,6 +64,7 @@ export async function createTransaction(
   const paymentMethodId = String(formData.get("payment_method_id") ?? "") || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const periodType = (String(formData.get("period_type") ?? "") || null) as RecurringPeriodType | null;
+  const dataFimContrato = String(formData.get("data_fim_contrato") ?? "") || null;
 
   if (!description || !date || !amount || amount <= 0) {
     return { error: "Preencha descrição, valor (maior que zero) e data." };
@@ -95,6 +96,7 @@ export async function createTransaction(
         start_date: resolvedDate,
         period_type: periodType,
         months_count: monthsCount,
+        data_fim_contrato: type === "despesa" ? dataFimContrato : null,
       })
       .select()
       .single();

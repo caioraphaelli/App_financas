@@ -107,6 +107,21 @@ export function TransactionFilters({
           ))}
         </SelectContent>
       </Select>
+      <Select
+        defaultValue={searchParams.get("classificacao") ?? "all"}
+        onValueChange={(v) => updateParams({ classificacao: v })}
+      >
+        <SelectTrigger className="w-[210px]">
+          <SelectValue placeholder="Classificação" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">Todas as classificações</SelectItem>
+          <SelectItem value="fixa">Despesa Fixa</SelectItem>
+          <SelectItem value="parcelada_curto">Despesa Parcelada — Curto Prazo</SelectItem>
+          <SelectItem value="parcelada_longo">Despesa Parcelada — Longo Prazo</SelectItem>
+          <SelectItem value="previsao">Previsão</SelectItem>
+        </SelectContent>
+      </Select>
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -9,18 +9,21 @@ import {
   getSubcategoriesByCategory,
   getPurchasesWithProgress,
   getMonthlyInstallmentsSummary,
+  getUserSettings,
 } from "@/lib/data/transactions";
 
 export const metadata: Metadata = { title: "Parcelamentos — Finanças+" };
 
 export default async function ParcelamentosPage() {
-  const [categories, subcategoriesByCategory, paymentMethods, purchases, monthlySummary] = await Promise.all([
-    getCategories(),
-    getSubcategoriesByCategory(),
-    getPaymentMethods(),
-    getPurchasesWithProgress(),
-    getMonthlyInstallmentsSummary(6),
-  ]);
+  const [categories, subcategoriesByCategory, paymentMethods, purchases, monthlySummary, userSettings] =
+    await Promise.all([
+      getCategories(),
+      getSubcategoriesByCategory(),
+      getPaymentMethods(),
+      getPurchasesWithProgress(),
+      getMonthlyInstallmentsSummary(6),
+      getUserSettings(),
+    ]);
 
   return (
     <div className="grid gap-6">
@@ -56,6 +59,7 @@ export default async function ParcelamentosPage() {
         categories={categories}
         subcategoriesByCategory={subcategoriesByCategory}
         paymentMethods={paymentMethods}
+        limiteCurtoPrazoMeses={userSettings.limite_curto_prazo_meses}
       />
     </div>
   );

@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const OPTIONS = [3, 6, 12];
 
-export function DreFilter({ monthsCount }: { monthsCount: number }) {
+export function FluxoCaixaFilter({ monthsCount }: { monthsCount: number }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -15,7 +15,7 @@ export function DreFilter({ monthsCount }: { monthsCount: number }) {
       value={String(monthsCount)}
       onValueChange={(v) => {
         const params = new URLSearchParams(searchParams.toString());
-        params.set("dreMonths", v);
+        params.set("fluxoMeses", v);
         router.push(`${pathname}?${params.toString()}`);
       }}
     >
