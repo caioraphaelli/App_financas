@@ -35,8 +35,8 @@ export function ForecastFormDialog({
   trigger?: React.ReactNode;
 }) {
   const isEdit = Boolean(forecast);
-  const type = forecast?.type ?? "despesa";
   const [open, setOpen] = useState(false);
+  const [type, setType] = useState<"receita" | "despesa">(forecast?.type ?? "despesa");
   const [categoryId, setCategoryId] = useState(forecast?.category_id ?? "");
   const [paymentMethodId, setPaymentMethodId] = useState(forecast?.payment_method_id ?? "");
   const [repeat, setRepeat] = useState(false);
@@ -48,6 +48,7 @@ export function ForecastFormDialog({
   const subcategories = categoryId ? subcategoriesByCategory[categoryId] ?? [] : [];
 
   function resetState() {
+    setType(forecast?.type ?? "despesa");
     setCategoryId(forecast?.category_id ?? "");
     setPaymentMethodId(forecast?.payment_method_id ?? "");
     setRepeat(false);
@@ -85,15 +86,36 @@ export function ForecastFormDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar previsão" : "Nova previsão de despesa"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Editar previsão" : "Nova previsão"}</DialogTitle>
           <DialogDescription>
-            Estimativa de despesa futura, ainda não confirmada. Você pode editá-la ou convertê-la em
-            um lançamento real quando se concretizar.
+            Estimativa de receita ou despesa futura, ainda não confirmada. Você pode editá-la ou
+            convertê-la em um lançamento real quando se concretizar.
           </DialogDescription>
         </DialogHeader>
         <form action={handleSubmit} className="grid gap-4">
           {isEdit && <input type="hidden" name="id" value={forecast!.id} />}
-          <input type="hidden" name="type" value={type} />
+
+          <div className="grid gap-2">
+            <Label>Natureza</Label>
+            <Select
+              name="type"
+              value={type}
+              onValueChange={(v) => {
+                setType(v as "receita" | "despesa");
+                setCategoryId("");
+              }}
+              disabled={isEdit}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="receita">Receita</SelectItem>
+                <SelectItem value="despesa">Despesa</SelectItem>
+              </SelectContent>
+            </Select>
+            {isEdit && <input type="hidden" name="type" value={type} />}
+          </div>
 
           <div className="grid gap-2">
             <Label htmlFor="description">Descrição</Label>
