@@ -46,7 +46,9 @@ export async function getOrcadoVsRealizado(month: number, year: number): Promise
       .lt("data_prevista", end),
     supabase
       .from("transactions")
-      .select("amount, type, category:categories(id,name,color), subcategory:subcategories(id,name)")
+      .select(
+        "amount, type, expense_kind, recurring_series_id, category:categories(id,name,color), subcategory:subcategories(id,name)"
+      )
       .gte("date", start)
       .lt("date", end),
   ]);
@@ -60,6 +62,8 @@ export async function getOrcadoVsRealizado(month: number, year: number): Promise
     category: { id: string; name: string; color: string } | null;
     subcategory: { id: string; name: string } | null;
   };
+
+  type TransactionRow = Row & { expense_kind: string | null; recurring_series_id: string | null };
 
   interface Bucket {
     categoryId: string;
@@ -106,10 +110,22 @@ export async function getOrcadoVsRealizado(month: number, year: number): Promise
     bucket.orcado += Number(row.amount);
     ensureSubcategoria(bucket, row).orcado += Number(row.amount);
   }
-  for (const row of (txData ?? []) as unknown as Row[]) {
+  for (const row of (txData ?? []) as unknown as TransactionRow[]) {
     const bucket = ensure(row);
-    bucket.realizado += Number(row.amount);
-    ensureSubcategoria(bucket, row).realizado += Number(row.amount);
+    const amount = Number(row.amount);
+    bucket.realizado += amount;
+    const sub = ensureSubcategoria(bucket, row);
+    sub.realizado += amount;
+
+    // Despesa fixa, receita fixa (recorrente) ou parcela de compra parcelada
+    // já é um valor comprometido/esperado, então também conta como
+    // "previsto" automaticamente, mesmo sem uma Previsão cadastrada à mão.
+    const isFixa = row.expense_kind === "fixa" || (row.type === "receita" && Boolean(row.recurring_series_id));
+    const isParcelada = row.expense_kind === "parcelada_cartao" || row.expense_kind === "parcelada_boleto";
+    if (isFixa || isParcelada) {
+      bucket.orcado += amount;
+      sub.orcado += amount;
+    }
   }
 
   const toLinha = (b: Bucket): OrcadoRealizadoLinha & { type: TransactionType } => ({

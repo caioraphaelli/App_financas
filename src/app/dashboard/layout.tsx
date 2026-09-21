@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NavLinks } from "@/components/dashboard/nav-links";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { MobileNav } from "@/components/dashboard/mobile-nav";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -23,8 +24,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="flex-1 py-4">
           <NavLinks />
         </div>
-        <div className="border-t p-2">
-          <UserMenu email={user?.email ?? ""} />
+        <div className="flex items-center gap-2 border-t p-2">
+          <div className="min-w-0 flex-1">
+            <UserMenu email={user?.email ?? ""} />
+          </div>
+          <ThemeToggle />
         </div>
       </aside>
 
@@ -34,7 +38,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Link href="/dashboard" className="font-semibold md:hidden">
             Finanças+
           </Link>
-          <div className="ml-auto md:hidden">
+          <div className="ml-auto flex items-center gap-2 md:hidden">
+            <ThemeToggle />
             <UserMenu email={user?.email ?? ""} />
           </div>
         </header>

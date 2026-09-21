@@ -26,15 +26,21 @@ export function PurchaseFormDialog({
   paymentMethods,
   purchase,
   trigger,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
 }: {
   categories: Category[];
   subcategoriesByCategory: Record<string, Subcategory[]>;
   paymentMethods: PaymentMethod[];
   purchase?: Purchase;
-  trigger?: React.ReactNode;
+  trigger?: React.ReactNode | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const isEdit = Boolean(purchase);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChangeProp ?? setInternalOpen;
   const [categoryId, setCategoryId] = useState(purchase?.category_id ?? "");
   const [paymentMethod, setPaymentMethod] = useState<PurchasePaymentType>(purchase?.payment_method ?? "cartao");
   const [paymentMethodId, setPaymentMethodId] = useState(purchase?.payment_method_id ?? "");
@@ -92,14 +98,16 @@ export function PurchaseFormDialog({
         if (next) resetState();
       }}
     >
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button>
-            <Plus className="size-4" />
-            Nova compra parcelada
-          </Button>
-        )}
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button>
+              <Plus className="size-4" />
+              Nova compra parcelada
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar compra parcelada" : "Nova compra parcelada"}</DialogTitle>
@@ -230,6 +238,7 @@ export function PurchaseFormDialog({
                 name="payment_method_id"
                 value={paymentMethodId}
                 onValueChange={setPaymentMethodId}
+                required
               >
                 <SelectTrigger>
                   <SelectValue placeholder={filteredPaymentMethods.length ? "Selecione" : "Nenhum cartão cadastrado"} />
@@ -254,7 +263,7 @@ export function PurchaseFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label>Categoria</Label>
-              <Select name="category_id" value={categoryId} onValueChange={setCategoryId}>
+              <Select name="category_id" value={categoryId} onValueChange={setCategoryId} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
@@ -273,10 +282,11 @@ export function PurchaseFormDialog({
                 name="subcategory_id"
                 defaultValue={purchase?.subcategory_id ?? ""}
                 disabled={!categoryId}
+                required={subcategories.length > 0}
                 key={categoryId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Opcional" />
+                  <SelectValue placeholder={subcategories.length > 0 ? "Selecione" : "Sem subcategorias"} />
                 </SelectTrigger>
                 <SelectContent>
                   {subcategories.map((s) => (

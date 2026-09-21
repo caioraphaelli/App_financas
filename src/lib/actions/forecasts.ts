@@ -48,8 +48,11 @@ export async function createForecast(
   const repeatRaw = String(formData.get("meses_repeticao") ?? "");
   const mesesRepeticao = repeatRaw ? Number(repeatRaw) : null;
 
-  if (!description || !amount || amount <= 0 || !dataPrevista) {
-    return { error: "Preencha descrição, valor (maior que zero) e data prevista." };
+  if (!description || !amount || amount <= 0 || !dataPrevista || !categoryId) {
+    return { error: "Preencha descrição, valor (maior que zero), data prevista e categoria." };
+  }
+  if (!paymentMethodId) {
+    return { error: "Selecione a forma de pagamento." };
   }
   if (mesesRepeticao !== null && (!Number.isInteger(mesesRepeticao) || mesesRepeticao < 1 || mesesRepeticao > 360)) {
     return { error: "Número de meses de repetição inválido." };
@@ -97,13 +100,16 @@ export async function updateForecast(
   const subcategoryId = String(formData.get("subcategory_id") ?? "") || null;
   const paymentMethodId = String(formData.get("payment_method_id") ?? "") || null;
 
-  if (!id || !description || !amount || amount <= 0 || !dataPrevista) {
-    return { error: "Preencha descrição, valor (maior que zero) e data prevista." };
+  if (!id || !description || !amount || amount <= 0 || !dataPrevista || !categoryId) {
+    return { error: "Preencha descrição, valor (maior que zero), data prevista e categoria." };
+  }
+  if (!paymentMethodId) {
+    return { error: "Selecione a forma de pagamento." };
   }
 
   const { data: existing } = await supabase
     .from("forecasts")
-    .select("status")
+    .select("status, data_prevista, group_id")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -127,6 +133,30 @@ export async function updateForecast(
 
   if (error) return { error: "Não foi possível atualizar a previsão." };
 
+  // Se essa previsão faz parte de uma série repetida e a data mudou de mês
+  // (antecipada ou adiada), as demais ocorrências da série acompanham o
+  // mesmo deslocamento de mês, mantendo o dia de cada uma.
+  const deltaMonths = monthsBetween(existing.data_prevista, dataPrevista);
+  if (existing.group_id && deltaMonths !== 0) {
+    const { data: siblings } = await supabase
+      .from("forecasts")
+      .select("id, data_prevista")
+      .eq("group_id", existing.group_id)
+      .eq("user_id", user.id)
+      .neq("id", id)
+      .neq("status", "convertida");
+
+    await Promise.all(
+      (siblings ?? []).map((s) =>
+        supabase
+          .from("forecasts")
+          .update({ data_prevista: addMonthsToDate(s.data_prevista, deltaMonths) })
+          .eq("id", s.id)
+          .eq("user_id", user.id)
+      )
+    );
+  }
+
   revalidatePath("/dashboard/transacoes");
   revalidatePath("/dashboard");
   return { success: true };
@@ -147,11 +177,40 @@ export async function deleteForecast(id: string): Promise<ActionResult> {
   return { success: true };
 }
 
+/** Troca só o dia de uma data, mantendo o mês/ano; se o dia não existir
+ * naquele mês (ex: 31 em fevereiro), usa o último dia do mês. */
+function withDay(dateStr: string, day: number): string {
+  const [year, month] = dateStr.split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const clampedDay = Math.min(day, lastDay);
+  return `${year}-${String(month).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
+}
+
+/** Diferença em meses entre duas datas (ano*12+mês), ignorando o dia. */
+function monthsBetween(fromDateStr: string, toDateStr: string): number {
+  const [fromYear, fromMonth] = fromDateStr.split("-").map(Number);
+  const [toYear, toMonth] = toDateStr.split("-").map(Number);
+  return toYear * 12 + toMonth - (fromYear * 12 + fromMonth);
+}
+
+/** Soma meses a uma data mantendo o dia (ou o último dia do mês, se o
+ * original não existir no mês de destino). */
+function addMonthsToDate(dateStr: string, months: number): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const total = year * 12 + (month - 1) + months;
+  const newYear = Math.floor(total / 12);
+  const newMonth = (total % 12) + 1;
+  const lastDay = new Date(newYear, newMonth, 0).getDate();
+  const clampedDay = Math.min(day, lastDay);
+  return `${newYear}-${String(newMonth).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
+}
+
 /**
  * Edita todas as ocorrências de uma previsão repetida (mesmo group_id) de
  * uma vez, exceto as que já foram convertidas (essas ficam de fora, como no
- * ajuste individual). A data prevista de cada ocorrência não muda — só os
- * demais campos são replicados para a série toda.
+ * ajuste individual). A data prevista de cada ocorrência mantém seu próprio
+ * mês/ano — só o dia do mês é ajustado para o mesmo em todas as ocorrências,
+ * já que a série continua representando uma previsão por mês.
  */
 export async function updateForecastGroup(
   _prevState: ActionResult,
@@ -166,13 +225,32 @@ export async function updateForecastGroup(
   const groupId = String(formData.get("group_id") ?? "");
   const description = String(formData.get("description") ?? "").trim();
   const amount = parseAmount(formData.get("amount"));
+  const dataPrevista = String(formData.get("data_prevista") ?? "");
+  const anchorDataPrevista = String(formData.get("anchor_data_prevista") ?? "") || dataPrevista;
   const categoryId = String(formData.get("category_id") ?? "") || null;
   const subcategoryId = String(formData.get("subcategory_id") ?? "") || null;
   const paymentMethodId = String(formData.get("payment_method_id") ?? "") || null;
 
-  if (!groupId || !description || !amount || amount <= 0) {
-    return { error: "Preencha descrição e valor (maior que zero)." };
+  if (!groupId || !description || !amount || amount <= 0 || !dataPrevista || !categoryId) {
+    return { error: "Preencha descrição, valor (maior que zero), data prevista e categoria." };
   }
+  if (!paymentMethodId) {
+    return { error: "Selecione a forma de pagamento." };
+  }
+
+  const { data: pending, error: fetchError } = await supabase
+    .from("forecasts")
+    .select("id, data_prevista")
+    .eq("group_id", groupId)
+    .eq("user_id", user.id)
+    .neq("status", "convertida");
+  if (fetchError) return { error: "Não foi possível carregar as previsões da série." };
+
+  const novoDia = Number(dataPrevista.split("-")[2]);
+  // Se o mês também mudou em relação à ocorrência que abriu o diálogo, todas
+  // as ocorrências da série são deslocadas pelo mesmo número de meses
+  // (antecipadas ou adiadas); o dia digitado é aplicado a todas do mesmo jeito.
+  const deltaMonths = monthsBetween(anchorDataPrevista, dataPrevista);
 
   const { error } = await supabase
     .from("forecasts")
@@ -188,6 +266,20 @@ export async function updateForecastGroup(
     .neq("status", "convertida");
 
   if (error) return { error: "Não foi possível atualizar as previsões da série." };
+
+  const dateUpdates = await Promise.all(
+    (pending ?? []).map((f) => {
+      const shifted = deltaMonths !== 0 ? addMonthsToDate(f.data_prevista, deltaMonths) : f.data_prevista;
+      return supabase
+        .from("forecasts")
+        .update({ data_prevista: withDay(shifted, novoDia) })
+        .eq("id", f.id)
+        .eq("user_id", user.id);
+    })
+  );
+  if (dateUpdates.some((r) => r.error)) {
+    return { error: "Dados atualizados, mas não foi possível ajustar as datas de todas as ocorrências." };
+  }
 
   revalidatePath("/dashboard/transacoes");
   revalidatePath("/dashboard");
@@ -237,8 +329,11 @@ export async function convertForecastToTransaction(
   const paymentMethodId = String(formData.get("payment_method_id") ?? "") || null;
   const expenseKind = (String(formData.get("expense_kind") ?? "") || null) as ExpenseKind | null;
 
-  if (!description || !amount || amount <= 0 || !date) {
-    return { error: "Preencha descrição, valor (maior que zero) e data." };
+  if (!description || !amount || amount <= 0 || !date || !categoryId) {
+    return { error: "Preencha descrição, valor (maior que zero), data e categoria." };
+  }
+  if (forecast.type === "despesa" && !paymentMethodId) {
+    return { error: "Selecione a forma de pagamento." };
   }
 
   const resolvedDate =
@@ -302,13 +397,29 @@ export async function convertForecastToPurchase(
   const installmentsTotal = Number(formData.get("installments_total"));
   const startingInstallment = Number(formData.get("starting_installment") ?? 1) || 1;
   const paymentMethod = String(formData.get("payment_method") ?? "cartao") as PurchasePaymentType;
-  const paymentMethodId = String(formData.get("payment_method_id") ?? "") || null;
+  let paymentMethodId = String(formData.get("payment_method_id") ?? "") || null;
   const firstDueDate = String(formData.get("first_due_date") ?? "");
   const categoryId = String(formData.get("category_id") ?? "") || null;
   const subcategoryId = String(formData.get("subcategory_id") ?? "") || null;
 
-  if (!description || !totalAmount || totalAmount <= 0 || !firstDueDate) {
-    return { error: "Preencha descrição, valor total (maior que zero) e a data da parcela inicial." };
+  if (!description || !totalAmount || totalAmount <= 0 || !firstDueDate || !categoryId) {
+    return { error: "Preencha descrição, valor total (maior que zero), data da parcela inicial e categoria." };
+  }
+  if (paymentMethod === "boleto" && !paymentMethodId) {
+    const { data: boletoMethod } = await supabase
+      .from("payment_methods")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("kind", "boleto")
+      .limit(1)
+      .maybeSingle();
+    if (!boletoMethod) {
+      return { error: "Cadastre uma forma de pagamento do tipo Boleto em Cadastros." };
+    }
+    paymentMethodId = boletoMethod.id;
+  }
+  if (!paymentMethodId) {
+    return { error: "Selecione o cartão utilizado." };
   }
   if (!Number.isInteger(installmentsTotal) || installmentsTotal < 1 || installmentsTotal > 120) {
     return { error: "Número de parcelas inválido (use entre 1 e 120)." };

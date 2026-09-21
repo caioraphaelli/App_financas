@@ -1,23 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Layers, Pencil, RefreshCcw } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { InfoBadge } from "@/components/dashboard/info-badge";
+import { EditChoiceButton } from "@/components/dashboard/edit-choice-button";
+import { DeleteSeriesButton } from "@/components/dashboard/delete-series-button";
 import { ForecastFormDialog } from "@/components/dashboard/forecast-form-dialog";
 import { ForecastGroupEditDialog } from "@/components/dashboard/forecast-group-edit-dialog";
-import { ForecastConvertDialog } from "@/components/dashboard/forecast-convert-dialog";
-import { DeleteButton } from "@/components/dashboard/delete-button";
 import { deleteForecast, deleteForecastGroup } from "@/lib/actions/forecasts";
 import { formatCurrency, formatDate } from "@/lib/format";
-import type { Category, ForecastWithRelations, PaymentMethod, Subcategory } from "@/lib/types/database";
+import type { Category, ForecastStatus, ForecastWithRelations, PaymentMethod, Subcategory } from "@/lib/types/database";
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<ForecastStatus, string> = {
   pendente: "Pendente",
   convertida: "Convertida",
   nao_realizada: "Não realizada",
-} as const;
+};
+
+const STATUS_EXPLANATIONS: Record<ForecastStatus, string> = {
+  pendente: "A data prevista ainda não passou e essa previsão ainda não foi convertida em lançamento real.",
+  convertida: "Essa previsão já virou um lançamento real (uma transação ou uma compra parcelada).",
+  nao_realizada: "A data prevista já passou e essa previsão não foi convertida em lançamento real.",
+};
 
 export function ForecastsTable({
   forecasts,
@@ -30,7 +34,7 @@ export function ForecastsTable({
   subcategoriesByCategory: Record<string, Subcategory[]>;
   paymentMethods: PaymentMethod[];
 }) {
-  const [converting, setConverting] = useState<ForecastWithRelations | null>(null);
+  const [editingForecast, setEditingForecast] = useState<ForecastWithRelations | null>(null);
   const [editingGroup, setEditingGroup] = useState<ForecastWithRelations | null>(null);
 
   if (forecasts.length === 0) {
@@ -52,12 +56,13 @@ export function ForecastsTable({
               <TableHead>Data prevista</TableHead>
               <TableHead className="text-right">Valor</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-[120px]" />
+              <TableHead className="w-[90px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {forecasts.map((f) => {
               const editable = f.status !== "convertida";
+              const hasGroup = Boolean(f.group_id);
               return (
                 <TableRow key={f.id}>
                   <TableCell className="font-medium">{f.description}</TableCell>
@@ -82,60 +87,30 @@ export function ForecastsTable({
                     {formatCurrency(Number(f.amount))}
                   </TableCell>
                   <TableCell>
-                    <Badge
+                    <InfoBadge
                       variant={f.status === "convertida" ? "secondary" : "outline"}
                       className={f.status === "nao_realizada" ? "text-muted-foreground" : ""}
-                    >
-                      {STATUS_LABELS[f.status]}
-                    </Badge>
+                      label={STATUS_LABELS[f.status]}
+                      explanation={STATUS_EXPLANATIONS[f.status]}
+                    />
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       {editable && (
-                        <>
-                          <Button variant="ghost" size="icon" title="Converter" onClick={() => setConverting(f)}>
-                            <RefreshCcw className="size-4" />
-                          </Button>
-                          <ForecastFormDialog
-                            categories={categories}
-                            subcategoriesByCategory={subcategoriesByCategory}
-                            paymentMethods={paymentMethods}
-                            forecast={f}
-                            trigger={
-                              <Button variant="ghost" size="icon" title="Editar">
-                                <Pencil className="size-4" />
-                              </Button>
-                            }
-                          />
-                          {f.group_id && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Editar toda a série"
-                              onClick={() => setEditingGroup(f)}
-                            >
-                              <Layers className="size-4" />
-                            </Button>
-                          )}
-                        </>
-                      )}
-                      <DeleteButton
-                        title="Excluir previsão"
-                        description={`Tem certeza que deseja excluir a previsão "${f.description}"?`}
-                        onDelete={() => deleteForecast(f.id)}
-                      />
-                      {f.group_id && (
-                        <DeleteButton
-                          title="Excluir série de previsões"
-                          description={`Tem certeza que deseja excluir todas as previsões da série "${f.description}"? Previsões já convertidas não serão afetadas.`}
-                          onDelete={() => deleteForecastGroup(f.group_id!)}
-                          trigger={
-                            <Button variant="ghost" size="icon" title="Excluir toda a série">
-                              <Layers className="size-4 text-destructive" />
-                            </Button>
-                          }
+                        <EditChoiceButton
+                          hasSeries={hasGroup}
+                          onChooseSingle={() => setEditingForecast(f)}
+                          onChooseSeries={() => setEditingGroup(f)}
                         />
                       )}
+                      <DeleteSeriesButton
+                        title="Excluir previsão"
+                        description={`Tem certeza que deseja excluir a previsão "${f.description}"?`}
+                        hasSeries={hasGroup}
+                        seriesDescription={`"${f.description}" faz parte de uma previsão repetida. Você quer excluir só esta ocorrência, ou toda a série? Previsões já convertidas não são afetadas pela exclusão da série.`}
+                        onDeleteSingle={() => deleteForecast(f.id)}
+                        onDeleteSeries={() => deleteForecastGroup(f.group_id!)}
+                      />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -145,14 +120,15 @@ export function ForecastsTable({
         </Table>
       </div>
 
-      {converting && (
-        <ForecastConvertDialog
-          forecast={converting}
+      {editingForecast && (
+        <ForecastFormDialog
           categories={categories}
           subcategoriesByCategory={subcategoriesByCategory}
           paymentMethods={paymentMethods}
-          open={Boolean(converting)}
-          onOpenChange={(open) => !open && setConverting(null)}
+          forecast={editingForecast}
+          trigger={null}
+          open={Boolean(editingForecast)}
+          onOpenChange={(open) => !open && setEditingForecast(null)}
         />
       )}
 

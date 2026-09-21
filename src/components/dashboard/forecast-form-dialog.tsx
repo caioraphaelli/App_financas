@@ -18,6 +18,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ForecastConvertForm } from "@/components/dashboard/forecast-convert-form";
 import type { Category, ForecastWithRelations, PaymentMethod, Subcategory } from "@/lib/types/database";
 import { toDateInputValue } from "@/lib/format";
 
@@ -27,15 +29,21 @@ export function ForecastFormDialog({
   paymentMethods,
   forecast,
   trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: {
   categories: Category[];
   subcategoriesByCategory: Record<string, Subcategory[]>;
   paymentMethods: PaymentMethod[];
   forecast?: ForecastWithRelations;
-  trigger?: React.ReactNode;
+  trigger?: React.ReactNode | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const isEdit = Boolean(forecast);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [type, setType] = useState<"receita" | "despesa">(forecast?.type ?? "despesa");
   const [categoryId, setCategoryId] = useState(forecast?.category_id ?? "");
   const [paymentMethodId, setPaymentMethodId] = useState(forecast?.payment_method_id ?? "");
@@ -44,6 +52,7 @@ export function ForecastFormDialog({
   const [pending, startTransition] = useTransition();
 
   const action = isEdit ? updateForecast : createForecast;
+  const canConvert = isEdit && forecast!.status !== "convertida";
   const filteredCategories = useMemo(() => categories.filter((c) => c.type === type), [categories, type]);
   const subcategories = categoryId ? subcategoriesByCategory[categoryId] ?? [] : [];
 
@@ -67,6 +76,157 @@ export function ForecastFormDialog({
     });
   }
 
+  const dadosForm = (
+    <form action={handleSubmit} className="grid gap-4">
+      {isEdit && <input type="hidden" name="id" value={forecast!.id} />}
+
+      <div className="grid gap-2">
+        <Label>Natureza</Label>
+        <Select
+          name="type"
+          value={type}
+          onValueChange={(v) => {
+            setType(v as "receita" | "despesa");
+            setCategoryId("");
+          }}
+          disabled={isEdit}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="receita">Receita</SelectItem>
+            <SelectItem value="despesa">Despesa</SelectItem>
+          </SelectContent>
+        </Select>
+        {isEdit && <input type="hidden" name="type" value={type} />}
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="description">Descrição</Label>
+        <Input
+          id="description"
+          name="description"
+          required
+          defaultValue={forecast?.description}
+          placeholder="Ex: Conserto do carro"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-2">
+          <Label htmlFor="amount">Valor (R$)</Label>
+          <Input
+            id="amount"
+            name="amount"
+            type="number"
+            step="0.01"
+            min="0.01"
+            required
+            defaultValue={forecast?.amount}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="data_prevista">Data prevista</Label>
+          <Input
+            id="data_prevista"
+            name="data_prevista"
+            type="date"
+            required
+            defaultValue={forecast?.data_prevista ?? toDateInputValue(new Date())}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-2">
+          <Label>Categoria</Label>
+          <Select name="category_id" value={categoryId} onValueChange={setCategoryId} required>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione" />
+            </SelectTrigger>
+            <SelectContent>
+              {filteredCategories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label>Subcategoria</Label>
+          <Select
+            name="subcategory_id"
+            defaultValue={forecast?.subcategory_id ?? ""}
+            disabled={!categoryId}
+            required={subcategories.length > 0}
+            key={categoryId}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={subcategories.length > 0 ? "Selecione" : "Sem subcategorias"} />
+            </SelectTrigger>
+            <SelectContent>
+              {subcategories.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <Label>Forma de pagamento</Label>
+        <Select name="payment_method_id" value={paymentMethodId} onValueChange={setPaymentMethodId} required>
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione" />
+          </SelectTrigger>
+          <SelectContent>
+            {paymentMethods.map((pm) => (
+              <SelectItem key={pm.id} value={pm.id}>
+                {pm.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {!isEdit && (
+        <div className="grid gap-3 rounded-md border bg-muted/30 p-3">
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={repeat} onCheckedChange={(c) => setRepeat(c === true)} />
+            Repetir por vários meses consecutivos
+          </label>
+          {repeat && (
+            <div className="grid gap-2">
+              <Label htmlFor="meses_repeticao">Quantos meses?</Label>
+              <Input
+                id="meses_repeticao"
+                name="meses_repeticao"
+                type="number"
+                min={2}
+                max={360}
+                defaultValue={6}
+                required
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <DialogFooter>
+        <Button type="submit" disabled={pending}>
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          {isEdit ? "Salvar alterações" : "Criar previsão"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+
   return (
     <Dialog
       open={open}
@@ -76,169 +236,52 @@ export function ForecastFormDialog({
         if (next) resetState();
       }}
     >
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button variant="outline">
-            <Plus className="size-4" />
-            Nova previsão
-          </Button>
-        )}
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline">
+              <Plus className="size-4" />
+              Nova previsão
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Editar previsão" : "Nova previsão"}</DialogTitle>
           <DialogDescription>
-            Estimativa de receita ou despesa futura, ainda não confirmada. Você pode editá-la ou
-            convertê-la em um lançamento real quando se concretizar.
+            {canConvert
+              ? "Atualize os dados da previsão ou converta-a em um lançamento real quando se concretizar."
+              : "Estimativa de receita ou despesa futura, ainda não confirmada."}
           </DialogDescription>
         </DialogHeader>
-        <form action={handleSubmit} className="grid gap-4">
-          {isEdit && <input type="hidden" name="id" value={forecast!.id} />}
 
-          <div className="grid gap-2">
-            <Label>Natureza</Label>
-            <Select
-              name="type"
-              value={type}
-              onValueChange={(v) => {
-                setType(v as "receita" | "despesa");
-                setCategoryId("");
-              }}
-              disabled={isEdit}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="receita">Receita</SelectItem>
-                <SelectItem value="despesa">Despesa</SelectItem>
-              </SelectContent>
-            </Select>
-            {isEdit && <input type="hidden" name="type" value={type} />}
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="description">Descrição</Label>
-            <Input
-              id="description"
-              name="description"
-              required
-              defaultValue={forecast?.description}
-              placeholder="Ex: Conserto do carro"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="amount">Valor (R$)</Label>
-              <Input
-                id="amount"
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                defaultValue={forecast?.amount}
+        {canConvert ? (
+          <Tabs defaultValue="dados">
+            <TabsList className="w-full">
+              <TabsTrigger value="dados" className="flex-1">
+                Dados
+              </TabsTrigger>
+              <TabsTrigger value="converter" className="flex-1">
+                Converter em lançamento
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="dados" className="mt-4">
+              {dadosForm}
+            </TabsContent>
+            <TabsContent value="converter" className="mt-4">
+              <ForecastConvertForm
+                forecast={forecast!}
+                categories={categories}
+                subcategoriesByCategory={subcategoriesByCategory}
+                paymentMethods={paymentMethods}
+                onSuccess={() => setOpen(false)}
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="data_prevista">Data prevista</Label>
-              <Input
-                id="data_prevista"
-                name="data_prevista"
-                type="date"
-                required
-                defaultValue={forecast?.data_prevista ?? toDateInputValue(new Date())}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label>Categoria</Label>
-              <Select name="category_id" value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredCategories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Subcategoria</Label>
-              <Select
-                name="subcategory_id"
-                defaultValue={forecast?.subcategory_id ?? ""}
-                disabled={!categoryId}
-                key={categoryId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Opcional" />
-                </SelectTrigger>
-                <SelectContent>
-                  {subcategories.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Forma de pagamento</Label>
-            <Select name="payment_method_id" value={paymentMethodId} onValueChange={setPaymentMethodId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Opcional" />
-              </SelectTrigger>
-              <SelectContent>
-                {paymentMethods.map((pm) => (
-                  <SelectItem key={pm.id} value={pm.id}>
-                    {pm.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {!isEdit && (
-            <div className="grid gap-3 rounded-md border bg-muted/30 p-3">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={repeat} onCheckedChange={(c) => setRepeat(c === true)} />
-                Repetir por vários meses consecutivos
-              </label>
-              {repeat && (
-                <div className="grid gap-2">
-                  <Label htmlFor="meses_repeticao">Quantos meses?</Label>
-                  <Input
-                    id="meses_repeticao"
-                    name="meses_repeticao"
-                    type="number"
-                    min={2}
-                    max={360}
-                    defaultValue={6}
-                    required
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending && <Loader2 className="size-4 animate-spin" />}
-              {isEdit ? "Salvar alterações" : "Criar previsão"}
-            </Button>
-          </DialogFooter>
-        </form>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          dadosForm
+        )}
       </DialogContent>
     </Dialog>
   );

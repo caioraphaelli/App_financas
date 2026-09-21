@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { ChevronDown, ChevronRight, Loader2, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Pencil, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -23,8 +24,21 @@ import {
   createSubcategory,
   deleteCategory,
   deleteSubcategory,
+  updateCategory,
+  updateSubcategory,
 } from "@/lib/actions/categories";
 import type { Category, Subcategory, TransactionType } from "@/lib/types/database";
+
+const CATEGORY_COLORS = [
+  "#2a78d6",
+  "#eb6834",
+  "#1baf7a",
+  "#eda100",
+  "#e87ba4",
+  "#008300",
+  "#4a3aa7",
+  "#e34948",
+];
 
 export function CategoriesManager({
   categories,
@@ -93,6 +107,9 @@ export function CategoriesManager({
                       Padrão
                     </Badge>
                   )}
+                  {isOwn && (
+                    <EditCategoryDialog category={category} />
+                  )}
                   <DeleteButton
                     title="Excluir categoria"
                     description={
@@ -114,6 +131,7 @@ export function CategoriesManager({
                               Padrão
                             </Badge>
                           )}
+                          {sub.user_id !== null && <EditSubcategoryDialog subcategory={sub} />}
                           <DeleteButton
                             title="Excluir subcategoria"
                             description={
@@ -196,6 +214,135 @@ function NewCategoryDialog({ type }: { type: TransactionType }) {
             <Button type="submit" disabled={pending}>
               {pending && <Loader2 className="size-4 animate-spin" />}
               Criar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditCategoryDialog({ category }: { category: Category }) {
+  const [open, setOpen] = useState(false);
+  const [color, setColor] = useState(category.color);
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+
+  function handleSubmit(formData: FormData) {
+    startTransition(async () => {
+      const result = await updateCategory({}, formData);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setError(undefined);
+        setOpen(false);
+        toast.success("Categoria atualizada.");
+      }
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        setError(undefined);
+        if (next) setColor(category.color);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-7" title="Editar categoria">
+          <Pencil className="size-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Editar categoria</DialogTitle>
+        </DialogHeader>
+        <form action={handleSubmit} className="grid gap-4">
+          <input type="hidden" name="id" value={category.id} />
+          <input type="hidden" name="color" value={color} />
+          <div className="grid gap-2">
+            <Label htmlFor="edit-category-name">Nome</Label>
+            <Input id="edit-category-name" name="name" required defaultValue={category.name} />
+          </div>
+          <div className="grid gap-2">
+            <Label>Cor</Label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={cn(
+                    "size-7 rounded-full border-2",
+                    color === c ? "border-foreground" : "border-transparent"
+                  )}
+                  style={{ backgroundColor: c }}
+                  aria-label={c}
+                />
+              ))}
+            </div>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="submit" disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditSubcategoryDialog({ subcategory }: { subcategory: Subcategory }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+
+  function handleSubmit(formData: FormData) {
+    startTransition(async () => {
+      const result = await updateSubcategory({}, formData);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setError(undefined);
+        setOpen(false);
+        toast.success("Subcategoria atualizada.");
+      }
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        setError(undefined);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-7" title="Editar subcategoria">
+          <Pencil className="size-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Editar subcategoria</DialogTitle>
+        </DialogHeader>
+        <form action={handleSubmit} className="grid gap-4">
+          <input type="hidden" name="id" value={subcategory.id} />
+          <div className="grid gap-2">
+            <Label htmlFor="edit-subcategory-name">Nome</Label>
+            <Input id="edit-subcategory-name" name="name" required defaultValue={subcategory.name} />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="submit" disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Salvar
             </Button>
           </DialogFooter>
         </form>

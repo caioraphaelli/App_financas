@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { updateForecastGroup } from "@/lib/actions/forecasts";
+import { updateRecurringSeries } from "@/lib/actions/transactions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,43 +16,43 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Category, ForecastWithRelations, PaymentMethod, Subcategory } from "@/lib/types/database";
+import type { Category, PaymentMethod, Subcategory, TransactionWithRelations } from "@/lib/types/database";
 
-export function ForecastGroupEditDialog({
-  forecast,
+export function RecurringSeriesEditDialog({
+  transaction,
   categories,
   subcategoriesByCategory,
   paymentMethods,
   open,
   onOpenChange,
 }: {
-  forecast: ForecastWithRelations;
+  transaction: TransactionWithRelations;
   categories: Category[];
   subcategoriesByCategory: Record<string, Subcategory[]>;
   paymentMethods: PaymentMethod[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [categoryId, setCategoryId] = useState(forecast.category_id ?? "");
-  const [paymentMethodId, setPaymentMethodId] = useState(forecast.payment_method_id ?? "");
+  const [categoryId, setCategoryId] = useState(transaction.category_id ?? "");
+  const [paymentMethodId, setPaymentMethodId] = useState(transaction.payment_method_id ?? "");
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
 
   const filteredCategories = useMemo(
-    () => categories.filter((c) => c.type === forecast.type),
-    [categories, forecast.type]
+    () => categories.filter((c) => c.type === transaction.type),
+    [categories, transaction.type]
   );
   const subcategories = categoryId ? subcategoriesByCategory[categoryId] ?? [] : [];
 
   function handleSubmit(formData: FormData) {
     startTransition(async () => {
-      const result = await updateForecastGroup({}, formData);
+      const result = await updateRecurringSeries({}, formData);
       if (result.error) {
         setError(result.error);
       } else {
         setError(undefined);
         onOpenChange(false);
-        toast.success("Série de previsões atualizada.");
+        toast.success("Série de lançamentos atualizada.");
       }
     });
   }
@@ -61,45 +61,31 @@ export function ForecastGroupEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Editar série de previsões</DialogTitle>
+          <DialogTitle>Editar série de lançamentos</DialogTitle>
           <DialogDescription>
-            As alterações serão aplicadas a todas as ocorrências desta previsão repetida que ainda não
-            foram convertidas. O dia da data prevista é ajustado igual em todas; se você também mudar o
-            mês, todas as ocorrências são antecipadas ou adiadas juntas pelo mesmo número de meses.
+            As alterações serão aplicadas a todos os lançamentos gerados por essa recorrência. A data
+            de cada um não muda.
           </DialogDescription>
         </DialogHeader>
         <form action={handleSubmit} className="grid gap-4">
-          <input type="hidden" name="group_id" value={forecast.group_id ?? ""} />
-          <input type="hidden" name="anchor_data_prevista" value={forecast.data_prevista} />
+          <input type="hidden" name="recurring_series_id" value={transaction.recurring_series_id ?? ""} />
 
           <div className="grid gap-2">
-            <Label htmlFor="group-description">Descrição</Label>
-            <Input id="group-description" name="description" required defaultValue={forecast.description} />
+            <Label htmlFor="series-description">Descrição</Label>
+            <Input id="series-description" name="description" required defaultValue={transaction.description} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="group-amount">Valor (R$)</Label>
-              <Input
-                id="group-amount"
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                defaultValue={forecast.amount}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="group-data-prevista">Data prevista</Label>
-              <Input
-                id="group-data-prevista"
-                name="data_prevista"
-                type="date"
-                required
-                defaultValue={forecast.data_prevista}
-              />
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="series-amount">Valor (R$)</Label>
+            <Input
+              id="series-amount"
+              name="amount"
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              defaultValue={transaction.amount}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -122,7 +108,7 @@ export function ForecastGroupEditDialog({
               <Label>Subcategoria</Label>
               <Select
                 name="subcategory_id"
-                defaultValue={forecast.subcategory_id ?? ""}
+                defaultValue={transaction.subcategory_id ?? ""}
                 disabled={!categoryId}
                 required={subcategories.length > 0}
                 key={categoryId}
@@ -141,21 +127,23 @@ export function ForecastGroupEditDialog({
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label>Forma de pagamento</Label>
-            <Select name="payment_method_id" value={paymentMethodId} onValueChange={setPaymentMethodId} required>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione" />
-              </SelectTrigger>
-              <SelectContent>
-                {paymentMethods.map((pm) => (
-                  <SelectItem key={pm.id} value={pm.id}>
-                    {pm.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {transaction.type === "despesa" && (
+            <div className="grid gap-2">
+              <Label>Forma de pagamento</Label>
+              <Select name="payment_method_id" value={paymentMethodId} onValueChange={setPaymentMethodId} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentMethods.map((pm) => (
+                    <SelectItem key={pm.id} value={pm.id}>
+                      {pm.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

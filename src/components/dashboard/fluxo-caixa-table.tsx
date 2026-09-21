@@ -20,13 +20,14 @@ interface FlatRow {
 
 function flatten(nodes: FluxoNode[], expanded: Set<string>, parentPath: string, level: number, kind: Kind): FlatRow[] {
   const rows: FlatRow[] = [];
-  // Se algum irmão deste nível está aberto, os demais ficam ocultos (não só
-  // fechados) para não poluir a visualização com vários ramos ao mesmo tempo.
-  const activeSibling = nodes.find((node) => {
+  // Se um irmão deste nível está aberto, só os que vêm depois dele na lista
+  // ficam ocultos (não só fechados) — os de cima continuam visíveis, como
+  // contexto de onde a árvore foi aberta.
+  const activeIndex = nodes.findIndex((node) => {
     const path = parentPath ? `${parentPath}>${node.key}` : node.key;
     return expanded.has(path);
   });
-  const visibleNodes = activeSibling ? [activeSibling] : nodes;
+  const visibleNodes = activeIndex === -1 ? nodes : nodes.slice(0, activeIndex + 1);
   for (const node of visibleNodes) {
     const path = parentPath ? `${parentPath}>${node.key}` : node.key;
     const hasChildren = Boolean(node.children && node.children.length > 0);

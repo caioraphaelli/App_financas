@@ -12,6 +12,7 @@ export interface FluxoNode {
   key: string;
   name: string;
   color?: string;
+  isForecast?: boolean;
   values: FluxoLineValue[];
   children?: FluxoNode[];
 }
@@ -28,11 +29,13 @@ interface PathSegment {
   key: string;
   name: string;
   color?: string;
+  isForecast?: boolean;
 }
 
 interface PathBucket {
   name: string;
   color?: string;
+  isForecast?: boolean;
   total: number;
   children: Map<string, PathBucket>;
 }
@@ -42,7 +45,7 @@ function addPath(root: Map<string, PathBucket>, path: PathSegment[], amount: num
   for (const seg of path) {
     let bucket = level.get(seg.key);
     if (!bucket) {
-      bucket = { name: seg.name, color: seg.color, total: 0, children: new Map() };
+      bucket = { name: seg.name, color: seg.color, isForecast: seg.isForecast, total: 0, children: new Map() };
       level.set(seg.key, bucket);
     }
     bucket.total += amount;
@@ -67,14 +70,18 @@ function mergeAcrossMonths(monthMaps: Map<string, PathBucket>[], receitasTotals:
       key,
       name: meta.name,
       color: meta.color,
+      isForecast: meta.isForecast,
       values,
       children: hasChildren ? mergeAcrossMonths(childMaps, receitasTotals) : undefined,
     };
   });
 
-  return nodes.sort(
-    (a, b) => b.values.reduce((s, v) => s + v.valor, 0) - a.values.reduce((s, v) => s + v.valor, 0)
-  );
+  // Linhas realizadas sempre antes das previstas (mesmo nível); dentro de
+  // cada grupo, ordena pelo maior valor total.
+  return nodes.sort((a, b) => {
+    if (Boolean(a.isForecast) !== Boolean(b.isForecast)) return a.isForecast ? 1 : -1;
+    return b.values.reduce((s, v) => s + v.valor, 0) - a.values.reduce((s, v) => s + v.valor, 0);
+  });
 }
 
 function pmBucket(kind: string | null | undefined): PathSegment {
@@ -140,9 +147,8 @@ export async function getFluxoCaixaComparison(
       supabase
         .from("forecasts")
         .select(
-          "id, description, amount, data_prevista, status, category:categories(id,name,color), subcategory:subcategories(id,name), payment_method:payment_methods(id,name,kind)"
+          "id, description, amount, data_prevista, type, status, category:categories(id,name,color), subcategory:subcategories(id,name), payment_method:payment_methods(id,name,kind)"
         )
-        .eq("type", "despesa")
         .neq("status", "convertida")
         .gte("data_prevista", start)
         .lt("data_prevista", end),
@@ -179,6 +185,7 @@ export async function getFluxoCaixaComparison(
     description: string;
     amount: number;
     data_prevista: string;
+    type: "receita" | "despesa";
     status: string;
     category: { id: string; name: string; color: string } | null;
     subcategory: { id: string; name: string } | null;
@@ -250,9 +257,11 @@ export async function getFluxoCaixaComparison(
     }
   }
 
-  // Fora do mês atual, soma as previsões de despesa (ainda não convertidas)
-  // dentro de Despesas Variáveis, como estimativa de gasto futuro/passado.
-  // O prazo é sempre "curto" pois previsão não é parcelamento.
+  // Fora do mês atual, soma as previsões (ainda não convertidas) dentro de
+  // Receitas (Avulsas) ou Despesas Variáveis, como estimativa de valores
+  // futuros/passados que ainda não viraram lançamento real. Nas despesas, o
+  // prazo é sempre "curto" pois previsão não é parcelamento; nas receitas
+  // não existe nível de prazo, igual às receitas avulsas reais.
   const prazoCurto = classificarPrazo(0, limiteCurtoPrazoMeses);
   for (const f of forecastRows) {
     const key = f.data_prevista.slice(0, 7);
@@ -260,17 +269,25 @@ export async function getFluxoCaixaComparison(
     const i = monthIndex.get(key);
     if (i === undefined) continue;
     const amount = Number(f.amount);
-    variaveisTotals[i] += amount;
     const cat = categoryBucket(f.category);
     const sub = subcategoryBucket(f.subcategory);
-    const pm = pmBucket(f.payment_method?.kind);
-    const path: PathSegment[] = [pm];
-    if (pm.key === "cartao") path.push(cardBucket(f.payment_method));
-    path.push(cat, sub, { key: prazoCurto, name: PRAZO_KEY_NAME[prazoCurto] }, {
+    const leaf: PathSegment = {
       key: `forecast:${f.id}`,
       name: `${f.description} (previsto)`,
-    });
-    addPath(variaveisMaps[i], path, amount);
+      isForecast: true,
+    };
+
+    if (f.type === "receita") {
+      receitasTotals[i] += amount;
+      addPath(receitasMaps[i], [{ key: "avulsas", name: "Avulsas" }, cat, sub, leaf], amount);
+    } else {
+      variaveisTotals[i] += amount;
+      const pm = pmBucket(f.payment_method?.kind);
+      const path: PathSegment[] = [pm];
+      if (pm.key === "cartao") path.push(cardBucket(f.payment_method));
+      path.push(cat, sub, { key: prazoCurto, name: PRAZO_KEY_NAME[prazoCurto] }, leaf);
+      addPath(variaveisMaps[i], path, amount);
+    }
   }
 
   const toValues = (totals: number[]): FluxoLineValue[] =>

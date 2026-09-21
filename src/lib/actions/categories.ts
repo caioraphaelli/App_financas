@@ -57,6 +57,47 @@ export async function createCategory(
   return { success: true };
 }
 
+export async function updateCategory(
+  _prevState: ActionResult,
+  formData: FormData
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sessão expirada. Faça login novamente." };
+
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const color = String(formData.get("color") ?? "").trim();
+
+  if (!id || !name) return { error: "Informe um nome para a categoria." };
+
+  const { data: category, error: fetchError } = await supabase
+    .from("categories")
+    .select("id, user_id")
+    .eq("id", id)
+    .single();
+  if (fetchError || !category) return { error: "Categoria não encontrada." };
+  if (category.user_id === null) {
+    return { error: "Categorias padrão do sistema não podem ser editadas, apenas ocultadas." };
+  }
+
+  const { error } = await supabase
+    .from("categories")
+    .update({ name, ...(color ? { color } : {}) })
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (error) return { error: "Não foi possível atualizar a categoria." };
+
+  revalidatePath("/dashboard/cadastros");
+  revalidatePath("/dashboard/transacoes");
+  revalidatePath("/dashboard/parcelamentos");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
 export async function deleteCategory(id: string): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -121,6 +162,46 @@ export async function createSubcategory(
   revalidatePath("/dashboard/cadastros");
   revalidatePath("/dashboard/transacoes");
   revalidatePath("/dashboard/parcelamentos");
+  return { success: true };
+}
+
+export async function updateSubcategory(
+  _prevState: ActionResult,
+  formData: FormData
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sessão expirada. Faça login novamente." };
+
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+
+  if (!id || !name) return { error: "Informe um nome para a subcategoria." };
+
+  const { data: subcategory, error: fetchError } = await supabase
+    .from("subcategories")
+    .select("id, user_id")
+    .eq("id", id)
+    .single();
+  if (fetchError || !subcategory) return { error: "Subcategoria não encontrada." };
+  if (subcategory.user_id === null) {
+    return { error: "Subcategorias padrão do sistema não podem ser editadas, apenas ocultadas." };
+  }
+
+  const { error } = await supabase
+    .from("subcategories")
+    .update({ name })
+    .eq("id", id)
+    .eq("user_id", user.id);
+
+  if (error) return { error: "Não foi possível atualizar a subcategoria." };
+
+  revalidatePath("/dashboard/cadastros");
+  revalidatePath("/dashboard/transacoes");
+  revalidatePath("/dashboard/parcelamentos");
+  revalidatePath("/dashboard");
   return { success: true };
 }
 

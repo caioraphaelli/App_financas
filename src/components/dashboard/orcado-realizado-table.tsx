@@ -59,8 +59,9 @@ function metaBadge(orcado: number, realizado: number, kind: Kind) {
   );
 }
 
-function SubcategoriaRow({ sub, max, kind }: { sub: OrcadoRealizadoSubcategoria; max: number; kind: Kind }) {
+function SubcategoriaRow({ sub, kind }: { sub: OrcadoRealizadoSubcategoria; kind: Kind }) {
   const accentColor = kind === "receita" ? "bg-[#006300]" : "bg-[#d03b3b]";
+  const max = Math.max(1, sub.orcado, sub.realizado);
   return (
     <div className="grid gap-1.5 rounded-md border bg-muted/20 p-2.5">
       <div className="flex items-center justify-between gap-2">
@@ -68,21 +69,21 @@ function SubcategoriaRow({ sub, max, kind }: { sub: OrcadoRealizadoSubcategoria;
         {metaBadge(sub.orcado, sub.realizado, kind)}
       </div>
       <div className="grid gap-1">
-        <Barra label="Orçado" valor={sub.orcado} max={max} colorClass="bg-foreground/30" compact />
+        <Barra label="Previsto" valor={sub.orcado} max={max} colorClass="bg-foreground/30" compact />
         <Barra label="Realizado" valor={sub.realizado} max={max} colorClass={accentColor} compact />
       </div>
     </div>
   );
 }
 
-function Linha({ linha, max, kind }: { linha: OrcadoRealizadoLinha; max: number; kind: Kind }) {
+function Linha({ linha, kind }: { linha: OrcadoRealizadoLinha; kind: Kind }) {
   const [open, setOpen] = useState(false);
   const accentColor = kind === "receita" ? "bg-[#006300]" : "bg-[#d03b3b]";
   const diff = linha.realizado - linha.orcado;
   const temOrcamento = linha.orcado > 0;
   const diffIsGood = kind === "despesa" ? diff <= 0 : diff >= 0;
   const hasSubcategorias = linha.subcategorias.length > 0;
-  const subMax = Math.max(1, ...linha.subcategorias.map((s) => Math.max(s.orcado, s.realizado)));
+  const max = Math.max(1, linha.orcado, linha.realizado);
 
   return (
     <div className="grid gap-1.5 rounded-md border p-3">
@@ -105,14 +106,14 @@ function Linha({ linha, max, kind }: { linha: OrcadoRealizadoLinha; max: number;
         <span className="truncate">{linha.name}</span>
       </button>
       <div className="grid gap-1">
-        <Barra label="Orçado" valor={linha.orcado} max={max} colorClass="bg-foreground/30" />
+        <Barra label="Previsto" valor={linha.orcado} max={max} colorClass="bg-foreground/30" />
         <Barra label="Realizado" valor={linha.realizado} max={max} colorClass={accentColor} />
       </div>
       {temOrcamento ? (
         diff !== 0 && (
           <p className={cn("text-xs", diffIsGood ? "text-[#006300]" : "text-[#d03b3b]")}>
             {diff > 0 ? "+" : ""}
-            {formatCurrency(diff)} {diff > 0 ? "acima do orçado" : "abaixo do orçado"}
+            {formatCurrency(diff)} {diff > 0 ? "acima do previsto" : "abaixo do previsto"}
           </p>
         )
       ) : (
@@ -122,7 +123,7 @@ function Linha({ linha, max, kind }: { linha: OrcadoRealizadoLinha; max: number;
         <div className="mt-1 grid gap-2 border-t pt-2">
           <p className="text-[11px] font-medium text-muted-foreground">Por subcategoria</p>
           {linha.subcategorias.map((sub) => (
-            <SubcategoriaRow key={sub.subcategoryId} sub={sub} max={subMax} kind={kind} />
+            <SubcategoriaRow key={sub.subcategoryId} sub={sub} kind={kind} />
           ))}
         </div>
       )}
@@ -144,7 +145,6 @@ export function OrcadoRealizadoSection({
   totalRealizado: number;
 }) {
   const accentColor = kind === "receita" ? "#006300" : "#d03b3b";
-  const max = Math.max(1, ...linhas.map((l) => Math.max(l.orcado, l.realizado)));
 
   return (
     <div className="grid gap-3">
@@ -152,7 +152,7 @@ export function OrcadoRealizadoSection({
         <h3 className="font-semibold">{title}</h3>
         {linhas.length > 1 && (
           <span className="text-sm text-muted-foreground">
-            Orçado {formatCurrency(totalOrcado)} · Realizado{" "}
+            Previsto {formatCurrency(totalOrcado)} · Realizado{" "}
             <span className="font-medium" style={{ color: accentColor }}>
               {formatCurrency(totalRealizado)}
             </span>
@@ -160,11 +160,11 @@ export function OrcadoRealizadoSection({
         )}
       </div>
       {linhas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhum orçado ou realizado neste período.</p>
+        <p className="text-sm text-muted-foreground">Nenhum previsto ou realizado neste período.</p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid items-start gap-2 sm:grid-cols-2">
           {linhas.map((linha) => (
-            <Linha key={linha.categoryId} linha={linha} max={max} kind={kind} />
+            <Linha key={linha.categoryId} linha={linha} kind={kind} />
           ))}
         </div>
       )}
